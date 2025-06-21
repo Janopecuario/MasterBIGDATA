@@ -74,71 +74,46 @@ def plot_cos2_heatmap(cosenos2):
     plt.show()
 
 #######################################################################################################
+
 def plot_corr_cos(n_components, correlaciones_datos_con_cp):
     """
-    Genera un gráficos en los que se representa un vector por cada variable, usando como ejes las componentes, la orientación
-    y la longitud del vector representa la correlación entre cada variable y dos de las componentes. El color representa el
-    valor de la suma de los cosenos al cuadrado.
+    Generates a scatter plot of the correlation between original variables and principal components
+    against the squared cosine values (cos^2).
 
     Args:
-        n_components (int): Número entero que representa el número de componentes principales seleccionadas.
-        correlaciones_datos_con_cp (DataFrame): DataFrame que contiene la matriz de correlaciones entre variables y componentes
+        n_components (int): The number of principal components.
+        correlaciones_datos_con_cp (pd.DataFrame): DataFrame containing the correlations
+                                                  of original data with principal components.
     """
-    # Definir un mapa de color (cmap) sensible a las diferencias numéricas
+    cos2 = correlaciones_datos_con_cp**2
 
-    cmap = plt.get_cmap('coolwarm')  # Puedes ajustar el cmap según tus preferencias
+    plt.figure(figsize=(10, 6))
 
-
+    # Iterate through each principal component
     for i in range(n_components):
-        for j in range(i + 1, n_components):  # Evitar pares duplicados
-            # Calcular la suma de los cosenos al cuadrado
-            sum_cos2 = correlaciones_datos_con_cp.iloc[:, i] ** 2 + correlaciones_datos_con_cp.iloc[:, j] ** 2
+        pc_name = f'Componente {i+1}'
+        # Extract correlations and cos^2 values for the current component
+        correlations = correlaciones_datos_con_cp[pc_name]
+        cos2_values = cos2[pc_name]
 
-            # Crear un nuevo gráfico para cada par de componentes principales
-            plt.figure(figsize=(10, 10))
+        # Create the scatter plot
+        # We use the cos2_values for coloring (c) and the colormap (cmap)
+        scatter = plt.scatter(correlations, cos2_values, label=pc_name,
+                            c=cos2_values, cmap='viridis', alpha=0.7, edgecolors='w')
 
-            # Dibujar un círculo de radio 1
-            circle = plt.Circle((0, 0), 1, fill=False, color='b', linestyle='dotted')
+    plt.xlabel('Correlation with Principal Component')
+    plt.ylabel('Cos$^2$')
+    plt.title('Correlation vs Cos$^2$ with Principal Components')
+    plt.axhline(0, color='gray', linestyle='--', linewidth=0.5)
+    plt.axvline(0, color='gray', linestyle='--', linewidth=0.5)
+    plt.grid(True, linestyle='--', alpha=0.6)
+    plt.legend()
 
-            plt.gca().add_patch(circle)
+    # Add the colorbar using the mappable from the scatter plot
+    # This links the colorbar to the colors used in the scatter plot
+    plt.colorbar(scatter, orientation='vertical', label='cos^2')
 
-            # Dibujar vectores para cada variable con colores basados en la suma de los cosenos al cuadrado
-            for k, var_name in enumerate(correlaciones_datos_con_cp.index):
-                x = correlaciones_datos_con_cp.iloc[k, i]  # Correlación en la primera dimensión
-                y = correlaciones_datos_con_cp.iloc[k, j]  # Correlación en la segunda dimensión
-
-                # Seleccionar un color de acuerdo a la suma de los cosenos al cuadrado
-                color = cmap(sum_cos2[k])
-
-                # Dibujar el vector con el color seleccionado
-                plt.quiver(0, 0, x, y, angles='xy', scale_units='xy', scale=1, color=color)
-
-                # Agregar el nombre de la variable junto a la flecha con el mismo color
-                plt.text(x, y, var_name, color=color, fontsize=12, ha='right', va='bottom')
-
-            # Dibujar líneas discontinuas que representen los ejes
-            plt.axhline(0, color='black', linestyle='--', linewidth=0.8)
-            plt.axvline(0, color='black', linestyle='--', linewidth=0.8)
-
-            # Etiquetar los ejes
-            plt.xlabel(f'Componente Principal {i + 1}')
-            plt.ylabel(f'Componente Principal {j + 1}')
-
-            # Establecer los límites del gráfico
-            plt.xlim(-1.1, 1.1)
-            plt.ylim(-1.1, 1.1)
-
-            # Agregar un mapa de color (colorbar) y su leyenda
-            sm = plt.cm.ScalarMappable(cmap=cmap)
-            sm.set_array([])  # Evita errores de escala
-            plt.colorbar(sm, orientation='vertical', label='cos^2')  # Agrega la leyenda
-
-            # Mostrar el gráfico
-            plt.grid()
-            plt.show()
-            
-
-##################################################################################################
+    plt.show()
 
 def plot_cos2_bars(cos2):
     """
