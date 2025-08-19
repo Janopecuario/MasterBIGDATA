@@ -1,0 +1,16 @@
+---
+title: "Tarea Clasificación Binaria - Big Data"
+author: "Alejandro González Fernández de Castro"
+date: "2025-08-19"
+output:
+  html_document:
+    df_print: paged
+---
+
+# 0. Enunciado y preparación de datos 
+
+# 1. Análisis, exploración y depuración de la base de datos. Justificación. 
+
+# 2. Mejor búsqueda paramétrica para el mejor árbol. #3. Mejores búsquedas paramétricas por accuracy para *Random Forest* y *XGBoost* 
+
+#4 . Proceso comparativo de los modelos
