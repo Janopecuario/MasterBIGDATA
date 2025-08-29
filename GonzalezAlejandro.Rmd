@@ -1,0 +1,209 @@
+---
+title: "Ejercicio Multivariante Pingüinos"
+author: "Alejandro González"
+date: "2025-08-18"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: 3
+    df_print: kable
+    latex_engine: xelatex
+    keep_tex: true
+    includes:
+      in_header: estilo-code.tex
+  html_document:
+    theme: simplex
+    toc: yes
+    toc_float:
+      collapsed: yes
+theme: null
+header-includes:
+  - \usepackage[table]{xcolor}
+  - \usepackage{float}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	message = FALSE,
+	error = TRUE,
+	warning = FALSE,
+	include = TRUE
+)
+library(rmdformats)
+library(prettydoc)
+library(hrbrthemes)
+library(tint)
+library(tufte)
+```
+
+# 0. Introducción
+
+Este documento se ha realizado con RMarkdown y Rstudio, utilizando el intérprete para Python Reticulate
+
+El enunciado nos pide desarrollar un modelo predictivo que nos permita saber si los coches de segunda mano, en base a sus caracerísticas, hay que pintarlos de blanco o no. La variable dependiente Color tomará los valores White o Black.
+
+El código de lectura y carga de las librerías no se muestra, puesto que es análogo al de los cuadernos del master.
+
+```{python cargar, include=FALSE}
+import os
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.tree import DecisionTreeClassifier, export_text, plot_tree
+from seaborn import countplot
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.metrics import confusion_matrix, classification_report, accuracy_score, precision_score, recall_score, f1_score, roc_curve, auc
+#os.chdir("~/BigData/11.MachineLearning1")
+cars = pd.read_excel('datos_tarea25.xlsx')
+```
+
+# 1. Análisis y depuración de la base de datos
+
+Arrancamos, nunca mejor dicho, con la carga exploración preliminar de las variables. El dataset está completo sin missing values, pero hay filas duplicadas:
+
+```{python missing}
+cars.isnull().sum()
+print(cars.duplicated().any())
+```
+
+Se eliminan entonces los duplicados. Se obtiene una muestra relativamente bien balanceada entre coches pintados de negro y coches pintados de blanco.
+
+```{python eliminar duplicados}
+cars = cars.drop_duplicates()
+cars["Color"].value_counts()
+```
+
+A continuación se realiza la caracterización inicial de las variables, asegurando que están codificadas adecuadamente y corrigiendo los errores:
+
+```{python exploracion1}
+cars = pd.read_excel('datos_tarea25.xlsx')
+print(cars.head(4).to_string(index=False))
+print('------------------')
+print('------------------')
+cars.dtypes
+```
+
+Hay una parte significativa de las variables predictoras que no están bien interpretadas, por diferentes motivos, particularmente introducción de caracteres. El siguiente código corrige las variables mal codificadas:
+
+```{python}
+#Mileage es numérica. Retiramos los caracteres y la convertimos en numérica
+cars["Mileage"] = cars["Mileage"].str.replace(' km', ' ', regex=False).astype(int)
+#Levy es numerica. Con Coerce se asignan Na.
+cars["Levy"] = pd.to_numeric(cars["Levy"],errors ="coerce")
+#ELiminación de la característica turbo y la pasamos a numérica
+cars["Engine volume"] = cars["Engine volume"].str.extract(r"([\d.]+)").astype(float)
+#Conversión de Cylinders a categórica
+cars["Cylinders"]= cars["Cylinders"].astype(object)
+cars.dtypes
+```
+
+## 1.2 Exploración y transformación de variables numéricas
+
+Con la función `describe()` se obtiene directamente los descriptivos básicos de las variables numéricas, permitiendo la primera aproximación a la detección de valores extremos o atípicos. De hecho, se pueden encontrar valores extremos máximos en Price, Levy, Prod.year y sobre todo, Mileage. Valores mínimos extemos hay seguramente en Prod.year, donde hay un coche de 1940.
+
+```{python opciones tablas, include=FALSE}
+pd.set_option("display.max_rows", None)
+pd.set_option("display.max_columns", None)
+pd.set_option("display.width", None)  # evita saltos de línea
+pd.set_option("display.max_colwidth", None)
+```
+
+```{python describe}
+cars.describe().T
+```
+
+```{python boxplots1, eval=FALSE, include=FALSE}
+cars.plot(
+    kind="box",
+    subplots=True,
+    layout=(3,3),
+    figsize=(12,8),
+    sharex=False,
+    sharey=False
+)
+```
+
+```{python extremos a missing}
+for col in cars.select_dtypes(include=[np.number]).columns:
+    
+    Q1 = cars[col].quantile(0.25)
+    Q3 = cars[col].quantile(0.75)
+    IQR = Q3 - Q1
+    lower = Q1 - 1.5 * IQR
+    upper = Q3 + 1.5 * IQR
+    # Reemplazar con  Nas
+    cars.loc[(cars[col] < lower) | (cars[col] > upper), col] = np.nan
+```
+
+```{python boxplots2}
+cars.plot(
+    kind="box",
+    subplots=True,
+    layout=(3,3),
+    figsize=(12,8),
+    sharex=False,
+    sharey=False
+)
+```
+
+La distribución de las variables resulta a priori parecida a la normal por lo que no se aplicarán transformaciones para intentar aproximarlas más. Queda pendiente el tratamiento de los datos missing que se han generado. Solamente Levy tiene valores missing importantes.
+
+```{python missings1}
+missings = cars.isnull().sum()
+propmissings = missings/len(cars)
+print(propmissings)
+```
+
+Se hará entonces una imputación por la mediana:
+
+```{python imputacion NAs}
+cars["Levy"].fillna(cars["Levy"].median(), inplace=True)
+```
+
+## 1.3 Exploración de variables categóricas
+
+```{python count}
+categoricas = cars.select_dtypes(include=["object", "category"]).columns.tolist()
+for col in categoricas:
+    plt.figure(figsize=(3,2))
+    sns.countplot(x=col, data=cars)
+    plt.title(f'N de {col}')
+    plt.xticks(rotation=45)
+    plt.show()
+```
+
+Este conteo nos lleva a realizar las dos siguientes modificaciones:
+
+-   Modificación de la variable cylinders, que ya la habíamos considerado como categórica, agrupando las categorías 6 y 8;
+-   Agrupación de la variable Drive Wheels en tracción delantera y otros
+-   Agrupación de fabricantes, donde se unen las categorías Mercedes-Benz y Lexus en otros.
+-   Eliminación de la posición del volante.
+
+```{python modifcategoricas}
+cars["Cylinders"] = cars["Cylinders"].apply(lambda x: x if x == "4" else "Otro")
+cars.drop(columns=["Wheel"],inplace=True)
+cars["Manufacturer"] = cars["Manufacturer"].replace(
+    {"MERCEDES-BENZ": "Otro", "LEXUS": "Otro"})
+cars["Drive wheels"] = cars["Drive wheels"].replace(
+    {"Rear": "Otro", "4x4": "Otro"})
+```
+
+Finalmente, se efectuan los dos siguientes procedimientos:
+
+- Aplicar el One Hot encoding para dummificar nuestras variables categóricas;
+- Dividir la muestra en entrenamiento y test y comprobación de que la distribución de la variable respuesta es similar:
+
+```{python onehot}
+cars = pd.get_dummies(cars,columns=categoricas,drop_first=True)
+X=cars.drop(columns=["Color"])
+y= cars["Color"]
+X_train , X_test , y_train , y_test = train_test_split(X, y, test_size =0.2, random_state =1234)
+```
+
+
+# 2. Búsqueda paramétrica del mejor árbol
+
+# 3. Búsqueda paramétrica en *Random Forest* y *XGBoost*
+
+# 4. Proceso comparativo
